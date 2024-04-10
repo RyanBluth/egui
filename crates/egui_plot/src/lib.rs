@@ -13,7 +13,7 @@ mod memory;
 mod plot_ui;
 mod transform;
 
-use std::{ops::RangeInclusive, sync::Arc};
+use std::{cmp::Ordering, ops::RangeInclusive, sync::Arc};
 
 use egui::ahash::HashMap;
 use egui::*;
@@ -1076,8 +1076,13 @@ impl Plot {
             }
         }
 
-        let hover_pos = response.hover_pos();
-        if let Some(hover_pos) = hover_pos {
+        // Note: we catch zoom/pan if the response contains the pointer, even if it isn't hovered.
+        // For instance: The user is painting another interactive widget on top of the plot
+        // but they still want to be able to pan/zoom the plot.
+        if let (true, Some(hover_pos)) = (
+            response.contains_pointer,
+            ui.input(|i| i.pointer.hover_pos()),
+        ) {
             if allow_zoom.any() {
                 let mut zoom_factor = if data_aspect.is_some() {
                     Vec2::splat(ui.input(|i| i.zoom_delta()))
@@ -1712,7 +1717,29 @@ fn generate_marks(step_sizes: [f64; 3], bounds: (f64, f64)) -> Vec<GridMark> {
     fill_marks_between(&mut steps, step_sizes[0], bounds);
     fill_marks_between(&mut steps, step_sizes[1], bounds);
     fill_marks_between(&mut steps, step_sizes[2], bounds);
+
+    // Remove duplicates:
+    // This can happen because we have overlapping steps, e.g.:
+    // step_size[0] =   10  =>  [-10, 0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]
+    // step_size[1] =  100  =>  [     0,                                     100          ]
+    // step_size[2] = 1000  =>  [     0                                                   ]
+
+    steps.sort_by(|a, b| match cmp_f64(a.value, b.value) {
+        // Keep the largest step size when we dedup later
+        Ordering::Equal => cmp_f64(b.step_size, a.step_size),
+
+        ord => ord,
+    });
+    steps.dedup_by(|a, b| a.value == b.value);
+
     steps
+}
+
+fn cmp_f64(a: f64, b: f64) -> Ordering {
+    match a.partial_cmp(&b) {
+        Some(ord) => ord,
+        None => a.is_nan().cmp(&b.is_nan()),
+    }
 }
 
 /// Fill in all values between [min, max] which are a multiple of `step_size`

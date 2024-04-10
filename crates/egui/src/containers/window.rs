@@ -104,6 +104,13 @@ impl<'open> Window<'open> {
         self
     }
 
+    /// `order(Order::Foreground)` for a Window that should always be on top
+    #[inline]
+    pub fn order(mut self, order: Order) -> Self {
+        self.area = self.area.order(order);
+        self
+    }
+
     /// Usage: `Window::new(…).mutate(|w| w.resize = w.resize.auto_expand_width(true))`
     // TODO(emilk): I'm not sure this is a good interface for this.
     #[inline]
@@ -328,9 +335,19 @@ impl<'open> Window<'open> {
     }
 
     /// Enable/disable horizontal/vertical scrolling. `false` by default.
+    ///
+    /// You can pass in `false`, `true`, `[false, true]` etc.
+    #[inline]
+    pub fn scroll(mut self, scroll: impl Into<Vec2b>) -> Self {
+        self.scroll = self.scroll.scroll(scroll);
+        self
+    }
+
+    /// Enable/disable horizontal/vertical scrolling. `false` by default.
+    #[deprecated = "Renamed to `scroll`"]
     #[inline]
     pub fn scroll2(mut self, scroll: impl Into<Vec2b>) -> Self {
-        self.scroll = self.scroll.scroll2(scroll);
+        self.scroll = self.scroll.scroll(scroll);
         self
     }
 
@@ -697,6 +714,7 @@ impl ResizeInteraction {
         let top = self.top.any();
         let bottom = self.bottom.any();
 
+        // TODO(emilk): use one-sided cursors for when we reached the min/max size.
         if (left && top) || (right && bottom) {
             ctx.set_cursor_icon(CursorIcon::ResizeNwSe);
         } else if (right && top) || (left && bottom) {

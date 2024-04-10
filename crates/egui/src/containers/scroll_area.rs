@@ -176,6 +176,9 @@ pub struct ScrollArea {
     /// end position until user manually changes position. It will become true
     /// again once scroll handle makes contact with end.
     stick_to_end: Vec2b,
+
+    /// If false, `scroll_to_*` functions will not be animated
+    animated: bool,
 }
 
 impl ScrollArea {
@@ -219,6 +222,7 @@ impl ScrollArea {
             scrolling_enabled: true,
             drag_to_scroll: true,
             stick_to_end: Vec2b::FALSE,
+            animated: true,
         }
     }
 
@@ -337,6 +341,16 @@ impl ScrollArea {
     }
 
     /// Turn on/off scrolling on the horizontal/vertical axes.
+    ///
+    /// You can pass in `false`, `true`, `[false, true]` etc.
+    #[inline]
+    pub fn scroll(mut self, scroll_enabled: impl Into<Vec2b>) -> Self {
+        self.scroll_enabled = scroll_enabled.into();
+        self
+    }
+
+    /// Turn on/off scrolling on the horizontal/vertical axes.
+    #[deprecated = "Renamed to `scroll`"]
     #[inline]
     pub fn scroll2(mut self, scroll_enabled: impl Into<Vec2b>) -> Self {
         self.scroll_enabled = scroll_enabled.into();
@@ -380,6 +394,15 @@ impl ScrollArea {
     #[inline]
     pub fn auto_shrink(mut self, auto_shrink: impl Into<Vec2b>) -> Self {
         self.auto_shrink = auto_shrink.into();
+        self
+    }
+
+    /// Should the scroll area animate `scroll_to_*` functions?
+    ///
+    /// Default: `true`.
+    #[inline]
+    pub fn animated(mut self, animated: bool) -> Self {
+        self.animated = animated;
         self
     }
 
@@ -449,6 +472,7 @@ struct Prepared {
 
     scrolling_enabled: bool,
     stick_to_end: Vec2b,
+    animated: bool,
 }
 
 impl ScrollArea {
@@ -465,6 +489,7 @@ impl ScrollArea {
             scrolling_enabled,
             drag_to_scroll,
             stick_to_end,
+            animated,
         } = self;
 
         let ctx = ui.ctx().clone();
@@ -640,6 +665,7 @@ impl ScrollArea {
             viewport,
             scrolling_enabled,
             stick_to_end,
+            animated,
         }
     }
 
@@ -751,6 +777,7 @@ impl Prepared {
             viewport: _,
             scrolling_enabled,
             stick_to_end,
+            animated,
         } = self;
 
         let content_size = content_ui.min_size();
@@ -794,7 +821,9 @@ impl Prepared {
                     if delta != 0.0 {
                         let target_offset = state.offset[d] + delta;
 
-                        if let Some(animation) = &mut state.offset_target[d] {
+                        if !animated {
+                            state.offset[d] = target_offset;
+                        } else if let Some(animation) = &mut state.offset_target[d] {
                             // For instance: the user is continuously calling `ui.scroll_to_cursor`,
                             // so we don't want to reset the animation, but perhaps update the target:
                             animation.target_offset = target_offset;

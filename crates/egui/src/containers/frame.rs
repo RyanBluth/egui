@@ -196,11 +196,15 @@ impl Frame {
         self
     }
 
+    /// Opacity multiplier in gamma space.
+    ///
+    /// For instance, multiplying with `0.5`
+    /// will make the frame half transparent.
     #[inline]
     pub fn multiply_with_opacity(mut self, opacity: f32) -> Self {
-        self.fill = self.fill.linear_multiply(opacity);
-        self.stroke.color = self.stroke.color.linear_multiply(opacity);
-        self.shadow.color = self.shadow.color.linear_multiply(opacity);
+        self.fill = self.fill.gamma_multiply(opacity);
+        self.stroke.color = self.stroke.color.gamma_multiply(opacity);
+        self.shadow.color = self.shadow.color.gamma_multiply(opacity);
         self
     }
 }
@@ -240,7 +244,7 @@ impl Frame {
         let where_to_put_background = ui.painter().add(Shape::Noop);
         let outer_rect_bounds = ui.available_rect_before_wrap();
 
-        let mut inner_rect = (self.inner_margin + self.outer_margin).shrink_rect(outer_rect_bounds);
+        let mut inner_rect = outer_rect_bounds - self.outer_margin - self.inner_margin;
 
         // Make sure we don't shrink to the negative:
         inner_rect.max.x = inner_rect.max.x.max(inner_rect.min.x);
@@ -291,16 +295,15 @@ impl Frame {
         if shadow == Default::default() {
             frame_shape
         } else {
-            let shadow = shadow.tessellate(outer_rect, rounding);
-            let shadow = Shape::Mesh(shadow);
-            Shape::Vec(vec![shadow, frame_shape])
+            let shadow = shadow.as_shape(outer_rect, rounding);
+            Shape::Vec(vec![Shape::from(shadow), frame_shape])
         }
     }
 }
 
 impl Prepared {
     fn content_with_margin(&self) -> Rect {
-        (self.frame.inner_margin + self.frame.outer_margin).expand_rect(self.content_ui.min_rect())
+        self.content_ui.min_rect() + self.frame.inner_margin + self.frame.outer_margin
     }
 
     /// Allocate the the space that was used by [`Self::content_ui`].
@@ -316,10 +319,7 @@ impl Prepared {
     ///
     /// This can be called before or after [`Self::allocate_space`].
     pub fn paint(&self, ui: &Ui) {
-        let paint_rect = self
-            .frame
-            .inner_margin
-            .expand_rect(self.content_ui.min_rect());
+        let paint_rect = self.content_ui.min_rect() + self.frame.inner_margin;
 
         if ui.is_rect_visible(paint_rect) {
             let shape = self.frame.paint(paint_rect);

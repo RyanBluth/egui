@@ -1113,8 +1113,6 @@ impl Context {
             changed: false,
         };
 
-        let clicked_elsewhere = res.clicked_elsewhere();
-
         self.write(|ctx| {
             let viewport = ctx.viewports.entry(ctx.viewport_id()).or_default();
 
@@ -1157,15 +1155,22 @@ impl Context {
             }
 
             let clicked = Some(id) == viewport.interact_widgets.clicked;
+            let mut any_press = false;
 
             for pointer_event in &input.pointer.pointer_events {
-                if let PointerEvent::Released { click, .. } = pointer_event {
-                    if enabled && sense.click && clicked && click.is_some() {
-                        res.clicked = true;
+                match pointer_event {
+                    PointerEvent::Moved(_) => {}
+                    PointerEvent::Pressed { .. } => {
+                        any_press = true;
                     }
+                    PointerEvent::Released { click, .. } => {
+                        if enabled && sense.click && clicked && click.is_some() {
+                            res.clicked = true;
+                        }
 
-                    res.is_pointer_button_down_on = false;
-                    res.dragged = false;
+                        res.is_pointer_button_down_on = false;
+                        res.dragged = false;
+                    }
                 }
             }
 
@@ -1188,17 +1193,31 @@ impl Context {
                 res.hovered = false;
             }
 
-            if clicked_elsewhere && memory.has_focus(id) {
+            let pointer_pressed_elsewhere = any_press && !res.hovered;
+            if pointer_pressed_elsewhere && memory.has_focus(id) {
                 memory.surrender_focus(id);
-            }
-
-            if res.dragged() && !memory.has_focus(id) {
-                // e.g.: remove focus from a widget when you drag something else
-                memory.stop_text_input();
             }
         });
 
         res
+    }
+
+    /// This is called by [`Response::widget_info`], but can also be called directly.
+    ///
+    /// With some debug flags it will store the widget info in [`WidgetRects`] for later display.
+    #[inline]
+    pub fn register_widget_info(&self, id: Id, make_info: impl Fn() -> crate::WidgetInfo) {
+        #[cfg(debug_assertions)]
+        self.write(|ctx| {
+            if ctx.memory.options.style.debug.show_interactive_widgets {
+                ctx.viewport().widgets_this_frame.set_info(id, make_info());
+            }
+        });
+
+        #[cfg(not(debug_assertions))]
+        {
+            _ = (self, id, make_info);
+        }
     }
 
     /// Get a full-screen painter for a new or existing layer
@@ -1806,6 +1825,7 @@ impl Context {
         self.write(|ctx| ctx.end_frame())
     }
 
+    /// Called at the end of the frame.
     #[cfg(debug_assertions)]
     fn debug_painting(&self) {
         let paint_widget = |widget: &WidgetRect, text: &str, color: Color32| {
@@ -1838,8 +1858,8 @@ impl Context {
                         } else if rect.sense.drag {
                             (Color32::from_rgb(0, 0, 0x88), "drag")
                         } else {
-                            continue;
-                            // (Color32::from_rgb(0, 0, 0x88), "hover")
+                            // unreachable since we only show interactive
+                            (Color32::from_rgb(0, 0, 0x88), "hover")
                         };
                         painter.debug_rect(rect.interact_rect, color, text);
                     }
@@ -1859,10 +1879,32 @@ impl Context {
                     hovered,
                 } = interact_widgets;
 
-                if false {
-                    for widget in contains_pointer {
-                        paint_widget_id(widget, "contains_pointer", Color32::BLUE);
+                if true {
+                    for &id in &contains_pointer {
+                        paint_widget_id(id, "contains_pointer", Color32::BLUE);
                     }
+
+                    let widget_rects = self.write(|w| w.viewport().widgets_this_frame.clone());
+
+                    let mut contains_pointer: Vec<Id> = contains_pointer.iter().copied().collect();
+                    contains_pointer.sort_by_key(|&id| {
+                        widget_rects
+                            .order(id)
+                            .map(|(layer_id, order_in_layer)| (layer_id.order, order_in_layer))
+                    });
+
+                    let mut debug_text = "Widgets in order:\n".to_owned();
+                    for id in contains_pointer {
+                        let mut widget_text = format!("{id:?}");
+                        if let Some(rect) = widget_rects.get(id) {
+                            widget_text += &format!(" {:?} {:?}", rect.rect, rect.sense);
+                        }
+                        if let Some(info) = widget_rects.info(id) {
+                            widget_text += &format!(" {info:?}");
+                        }
+                        debug_text += &format!("{widget_text}\n");
+                    }
+                    self.debug_text(debug_text);
                 }
                 if true {
                     for widget in hovered {
@@ -1886,7 +1928,7 @@ impl Context {
                 drag,
             } = hits;
 
-            if false {
+            if true {
                 for widget in &contains_pointer {
                     paint_widget(widget, "contains_pointer", Color32::BLUE);
                 }
@@ -2776,7 +2818,7 @@ impl Context {
     /// The `Context` lock is held while the given closure is called!
     ///
     /// Returns `None` if acesskit is off.
-    // TODO(emilk): consider making both RO and RW versions
+    // TODO(emilk): consider making both read-only and read-write versions
     #[cfg(feature = "accesskit")]
     pub fn accesskit_node_builder<R>(
         &self,

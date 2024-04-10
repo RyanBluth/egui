@@ -38,9 +38,6 @@ pub struct Response {
     ///
     /// This is sometimes smaller than [`Self::rect`] because of clipping
     /// (e.g. when inside a scroll area).
-    ///
-    /// The interact rect may also be slightly larger than the widget rect,
-    /// because egui adds half if the item spacing to make the interact rect easier to hit.
     pub interact_rect: Rect,
 
     /// The senses (click and/or drag) that the widget was interested in (if any).
@@ -59,7 +56,7 @@ pub struct Response {
     pub enabled: bool,
 
     // OUT:
-    /// The pointer is hovering above this widget.
+    /// The pointer is above this widget with no other blocking it.
     #[doc(hidden)]
     pub contains_pointer: bool,
 
@@ -200,7 +197,10 @@ impl Response {
         self.clicked && self.ctx.input(|i| i.pointer.button_triple_clicked(button))
     }
 
-    /// `true` if there was a click *outside* this widget this frame.
+    /// `true` if there was a click *outside* the rect of this widget.
+    ///
+    /// Clicks on widgets contained in this one counts as clicks inside this widget,
+    /// so that clicking a button in an area will not be considered as clicking "elsewhere" from the area.
     pub fn clicked_elsewhere(&self) -> bool {
         // We do not use self.clicked(), because we want to catch all clicks within our frame,
         // even if we aren't clickable (or even enabled).
@@ -209,14 +209,10 @@ impl Response {
             let pointer = &i.pointer;
 
             if pointer.any_click() {
-                // We detect clicks/hover on a "interact_rect" that is slightly larger than
-                // self.rect. See Context::interact.
-                // This means we can be hovered and clicked even though `!self.rect.contains(pos)` is true,
-                // hence the extra complexity here.
-                if self.contains_pointer() {
+                if self.contains_pointer || self.hovered {
                     false
                 } else if let Some(pos) = pointer.interact_pos() {
-                    !self.rect.contains(pos)
+                    !self.interact_rect.contains(pos)
                 } else {
                     false // clicked without a pointer, weird
                 }
@@ -243,14 +239,13 @@ impl Response {
         self.hovered
     }
 
-    /// Returns true if the pointer is contained by the response rect.
+    /// Returns true if the pointer is contained by the response rect, and no other widget is covering it.
     ///
     /// In contrast to [`Self::hovered`], this can be `true` even if some other widget is being dragged.
     /// This means it is useful for styling things like drag-and-drop targets.
     /// `contains_pointer` can also be `true` for disabled widgets.
     ///
-    /// This is slightly different from [`Ui::rect_contains_pointer`] and [`Context::rect_contains_pointer`],
-    /// The rectangle used here is slightly larger, by half of the current item spacing.
+    /// This is slightly different from [`Ui::rect_contains_pointer`] and [`Context::rect_contains_pointer`], in that
     /// [`Self::contains_pointer`] also checks that no other widget is covering this response rectangle.
     #[inline(always)]
     pub fn contains_pointer(&self) -> bool {
@@ -366,13 +361,13 @@ impl Response {
 
     /// The widget was being dragged, but now it has been released.
     #[inline]
-    #[deprecated = "Renamed 'dragged_stopped'"]
+    #[deprecated = "Renamed 'drag_stopped'"]
     pub fn drag_released(&self) -> bool {
         self.drag_stopped
     }
 
     /// The widget was being dragged by the button, but now it has been released.
-    #[deprecated = "Renamed 'dragged_stopped_by'"]
+    #[deprecated = "Renamed 'drag_stopped_by'"]
     pub fn drag_released_by(&self, button: PointerButton) -> bool {
         self.drag_stopped_by(button)
     }
@@ -750,6 +745,7 @@ impl Response {
     /// Call after interacting and potential calls to [`Self::mark_changed`].
     pub fn widget_info(&self, make_info: impl Fn() -> crate::WidgetInfo) {
         use crate::output::OutputEvent;
+
         let event = if self.clicked() {
             Some(OutputEvent::Clicked(make_info()))
         } else if self.double_clicked() {
@@ -763,6 +759,7 @@ impl Response {
         } else {
             None
         };
+
         if let Some(event) = event {
             self.output_event(event);
         } else {
@@ -770,6 +767,8 @@ impl Response {
             self.ctx.accesskit_node_builder(self.id, |builder| {
                 self.fill_accesskit_node_from_widget_info(builder, make_info());
             });
+
+            self.ctx.register_widget_info(self.id, make_info);
         }
     }
 
@@ -778,6 +777,10 @@ impl Response {
         self.ctx.accesskit_node_builder(self.id, |builder| {
             self.fill_accesskit_node_from_widget_info(builder, event.widget_info().clone());
         });
+
+        self.ctx
+            .register_widget_info(self.id, || event.widget_info().clone());
+
         self.ctx.output_mut(|o| o.events.push(event));
     }
 
