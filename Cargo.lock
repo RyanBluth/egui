@@ -1211,7 +1211,7 @@ dependencies = [
  "glow",
  "glutin",
  "glutin-winit",
- "image",
+ "image 0.24.7",
  "js-sys",
  "log",
  "objc",
@@ -1297,7 +1297,7 @@ dependencies = [
  "egui_extras",
  "ehttp",
  "env_logger",
- "image",
+ "image 0.24.7",
  "log",
  "poll-promise",
  "puffin",
@@ -1334,7 +1334,7 @@ dependencies = [
  "egui",
  "ehttp",
  "enum-map",
- "image",
+ "image 0.25.1",
  "log",
  "mime_guess2",
  "puffin",
@@ -2107,13 +2107,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "image"
+version = "0.25.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fd54d660e773627692c524beaad361aca785a4f9f5730ce91f42aabe5bce3d11"
+dependencies = [
+ "bytemuck",
+ "byteorder",
+ "num-traits",
+]
+
+[[package]]
 name = "images"
 version = "0.1.0"
 dependencies = [
  "eframe",
  "egui_extras",
  "env_logger",
- "image",
+ "image 0.24.7",
 ]
 
 [[package]]
@@ -3278,7 +3289,7 @@ dependencies = [
  "eframe",
  "egui_plot",
  "env_logger",
- "image",
+ "image 0.24.7",
  "rfd",
 ]
 
@@ -3300,7 +3311,7 @@ version = "0.1.0"
 dependencies = [
  "eframe",
  "env_logger",
- "image",
+ "image 0.24.7",
 ]
 
 [[package]]
